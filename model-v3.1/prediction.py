@@ -17,7 +17,12 @@ class GesturePredictor:
         self.data_buffer = deque(maxlen=window_size)
         self.prediction_interval = prediction_interval
         self.last_prediction_time = 0
-        
+
+        self.mean = np.zeros(8)
+        self.std = np.zeros(8)
+        self.n_values = 0
+        self.recording = False
+
         # Load the model and metadata
         self.model = tf.keras.models.load_model(f"model/{MODEL_PATH}")
         with open(f"model/{METADATA_PATH}", 'rb') as f:
@@ -30,10 +35,23 @@ class GesturePredictor:
             
         # Convert buffer to a numpy array
         window_data = np.array(list(self.data_buffer))
-        
-        # Calculate RMS features
-        rms_features = np.sqrt(np.mean(np.square(window_data), axis=0))
-        
+        if self.recording:
+            new_mean = np.mean(window_data, axis=0)
+            new_std = np.std(window_data, axis=0)
+
+            # Update mean using running average formula
+            self.mean = (self.mean * self.n_values + new_mean) / (self.n_values + 1)
+            
+            # Update standard deviation using running average formula
+            self.std = (self.std * self.n_values + new_std) / (self.n_values + 1)
+            self.n_values += 1
+
+        # Normalize the data
+        normalized_data = (window_data - self.mean) / np.where(self.std == 0, 1, self.std)
+
+        # Calculate RMS features on the normalized data
+        rms_features = np.sqrt(np.mean(np.square(normalized_data), axis=0))
+
         # Create a DataFrame with the correct column names
         features_df = pd.DataFrame([rms_features], columns=self.columns)
         
